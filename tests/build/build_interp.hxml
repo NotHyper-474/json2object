@@ -1,2 +1,4 @@
 tests/build/build_common.hxml
 --interp
+--debug
+-D dump=pretty

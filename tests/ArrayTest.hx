@@ -22,13 +22,72 @@ SOFTWARE.
 
 package tests;
 
+import tests.EnumTest.Enum1;
+import haxe.Json;
 import json2object.JsonParser;
 import json2object.JsonWriter;
 import json2object.utils.JsonSchemaWriter;
 import utest.Assert;
 
+
+@:structInit
+class Params
+{
+	public function new(name:String, value:Dynamic)
+	{
+		this.name = name;
+		this.value = value;
+	}
+
+	public var name:String;
+	//@:jcustomwrite(tests.ArrayTest.writeDynamic)
+	public var value:Dynamic;
+}
+
+class ClassTest
+{
+
+	public function new(time:Int, ?kind:String, ?v:Dynamic, params:Array<Int>, enum1:Enum1)
+	{
+		this.time = time;
+		this.kind = kind;
+		this.v = v;
+		this.params = params;
+		enumTest = enum1;
+	}
+
+	@:alias("t")
+	public var time:Int;
+
+	@:alias("k")
+	@:optional
+	@:default("")
+	public var kind:String;
+
+
+	//@:jcustomwrite(tests.ArrayTest.writeDynamic)
+	@:optional
+	public var v:Dynamic;
+
+	@:optional
+	@:default([])
+	@:alias("p")
+	public var params:Array<Int>;
+
+	@:alias("e")
+	public var enumTest:Enum1;
+}
+
 class ArrayTest implements utest.ITest {
 	public function new () {}
+
+	@:access(haxe.format.JsonPrinter)
+	public static function writeDynamic(v:Dynamic)
+	{
+		var printer = new haxe.format.JsonPrinter(null, '\t');
+		printer.write('', v);
+		return printer.buf.toString();
+	}
 
 	public function test1 () {
 		var parser = new JsonParser<Array<Int>>();
@@ -39,7 +98,7 @@ class ArrayTest implements utest.ITest {
 			Assert.equals(oracle[i], data[i]);
 		}
 		Assert.equals(0, parser.errors.length);
-		Assert.same(data, parser.fromJson(writer.write(data),"test"));
+		Assert.same(data, parser.fromJson(writer.write(data, "  "),"test"));
 
 		data = parser.fromJson('[0,1,4.4,3]', "");
 		Assert.equals(1, parser.errors.length);
@@ -48,6 +107,10 @@ class ArrayTest implements utest.ITest {
 			Assert.equals(oracle[i], data[i]);
 		}
 		Assert.same(data, parser.fromJson(writer.write(data),"test"));
+
+		var dyn = [new ClassTest(0, null, [{a: 10}, 20, 20.2], [], EnumValue1("Some value"))];
+		var writer1 = new JsonWriter<Array<ClassTest>>(true);
+		trace(writer1.write(dyn, '  '));
 	}
 
 	#if !lua

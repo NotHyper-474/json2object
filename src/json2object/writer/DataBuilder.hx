@@ -426,6 +426,47 @@ class DataBuilder {
 				}
 				return buff.toString();
 			}
+
+			private function dynamicWriter(o:Dynamic, space:String, level:Int, indentFirst:Bool = false, onAllOptionalNull:Void->String):String
+			{
+				if (o == null) return indentFirst ? buildIndent(space, level) : '' + "null";
+
+				switch (Type.typeof(o))
+				{
+					case TUnknown: return indentFirst ? buildIndent(space, level) : '' + '"???"';
+					case TFunction: throw "Cannot write a function.";
+					case TInt: $e{makeBasicWriter(Context.getType("Int"))};
+					case TFloat: $e{makeBasicWriter(Context.getType("Float"))};
+					case TBool: $e{makeBasicWriter(Context.getType("Bool"))};
+					case TClass(c):
+						if (c == String)
+							$e{makeStringWriter()};
+						else if (c == Array)
+						{
+							var v:Array<Dynamic> = o;
+							var buf = new StringBuf();
+							buf.addChar('['.code);
+							for (i in 0...v.length)
+							{
+								if (i > 0) buf.addChar(','.code);
+								else level++;
+								buf.addChar('\n'.code);
+								buf.add(buildIndent(space, level));
+								buf.add(dynamicWriter(v[i], space, level, indentFirst, onAllOptionalNull));
+								if (i == v.length - 1)
+								{
+									level--;
+									buf.addChar('\n'.code);
+									buf.add(buildIndent(space, level));
+								}
+							}
+							buf.addChar(']'.code);
+							return buf.toString();
+						}
+						else throw "shit";
+					case _: throw "Not implemented!";
+				}
+			}
 		};
 
 		var writeExpr = switch (type) {
@@ -494,6 +535,8 @@ class DataBuilder {
 				return makeWriter(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeWriter(c, f(), f());
+			case TDynamic(_):
+				macro return dynamicWriter(o, space, level, indentFirst, onAllOptionalNull);
 			default: Context.fatalError("json2object: Writer for "+type.toString()+" are not generated", Context.currentPos());
 		}
 
