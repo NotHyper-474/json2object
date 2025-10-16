@@ -427,20 +427,50 @@ class DataBuilder {
 				return buff.toString();
 			}
 
-			private function dynamicWriter(o:Dynamic, space:String, level:Int, indentFirst:Bool = false, onAllOptionalNull:Void->String):String
-			{
+			private function fieldsWrite(o:Dynamic, fields:Array<String>, space:String, level:Int):String {
+				var buf:StringBuf = new StringBuf();
+				var empty:Bool = true;
+				buf.addChar('{'.code);
+				for (i in 0...fields.length)
+				{
+					var f = Reflect.field(o, fields[i]);
+					if (Reflect.isFunction(f)) continue;
+					if (empty)
+					{
+						level++;
+						empty = false;
+					}
+					else buf.addChar(','.code);
+
+					buf.addChar('\n'.code);
+					buf.add(buildIndent(space, level));
+					buf.add(quote(fields[i]));
+					buf.add(': ');
+					buf.add(dynamicWriter(f, space, level, false, null));
+				}
+				if (!empty)
+				{
+					level--;
+					buf.addChar('\n'.code);
+					buf.add(buildIndent(space, level));
+				}
+				buf.addChar('}'.code);
+
+				return buf.toString();
+			}
+
+			private function dynamicWriter(o:Dynamic, space:String, level:Int, indentFirst:Bool = false, onAllOptionalNull:Void->String):String {
 				if (o == null) return indentFirst ? buildIndent(space, level) : '' + "null";
 
 				switch (Type.typeof(o))
 				{
 					case TUnknown: return indentFirst ? buildIndent(space, level) : '' + '"???"';
 					case TFunction: throw "Cannot write a function.";
-					case TInt: $e{makeBasicWriter(Context.getType("Int"))};
-					case TFloat: $e{makeBasicWriter(Context.getType("Float"))};
-					case TBool: $e{makeBasicWriter(Context.getType("Bool"))};
+					case TInt | TFloat | TBool: ${makeBasicWriter(Context.getType("Null"))};
+					case TObject: return fieldsWrite(o, Reflect.fields(o), space, level);
 					case TClass(c):
 						if (c == String)
-							$e{makeStringWriter()};
+							${makeStringWriter()};
 						else if (c == Array)
 						{
 							var v:Array<Dynamic> = o;
@@ -463,9 +493,23 @@ class DataBuilder {
 							buf.addChar(']'.code);
 							return buf.toString();
 						}
-						else throw "shit";
+						else if (c == haxe.ds.StringMap)
+						{
+							var v:haxe.ds.StringMap<Dynamic> = o;
+							var o = {};
+							for (k in v.keys())
+								Reflect.setField(o, k, v.get(k));
+							return fieldsWrite(o, Reflect.fields(o), space, level);
+						} 
+						else if (c == Date)
+						{
+							return quote((o:Date).toString());
+						}
+						else
+							return fieldsWrite(o, Type.getInstanceFields(o), space, level);			
 					case _: throw "Not implemented!";
 				}
+				
 			}
 		};
 

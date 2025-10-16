@@ -229,6 +229,40 @@ class DataBuilder {
 		parser.fields.push(loadJ);
 	}
 
+	public static function makeDynamicParser(parser:TypeDefinition) {
+		var e = macro {
+			return value = hxjsonast.Tools.getValue(json);
+		}
+
+		var args:Array<FunctionArg> = [
+			{
+				name: "json",
+				type: macro:hxjsonast.Json
+			},
+			{
+				name:"variable",
+				type: macro:String,
+				opt: true,
+				value: macro ""
+			}
+		];
+
+		var loadJ:Field = {
+			doc: null,
+			kind: FFun({
+				args: args,
+				expr: e,
+				params: null,
+				ret: macro :Dynamic
+			}),
+			access: [AOverride, APublic],
+			name: "loadJson",
+			pos: Context.currentPos(),
+			meta: null
+		}
+		parser.fields.push(loadJ);
+	}
+
 	private static function invalidParserErrorMessage(t:Type, e:Expr, m:String):String {
 		var methodName = jcustom;
 
@@ -1068,6 +1102,9 @@ class DataBuilder {
 				return makeParser(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeParser(c, f());
+			case TDynamic(_):
+				makeDynamicParser(parser);
+				
 			default: Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
 		}
 

@@ -108,9 +108,11 @@ class ArrayTest implements utest.ITest {
 		}
 		Assert.same(data, parser.fromJson(writer.write(data),"test"));
 
-		var dyn = [new ClassTest(0, null, [{a: 10}, 20, 20.2], [], EnumValue1("Some value"))];
+		var dyn = [new ClassTest(0, null, [{ a: 10 }, 20, 20], [], EnumValue1("Some value"))];
 		var writer1 = new JsonWriter<Array<ClassTest>>(true);
-		trace(writer1.write(dyn, '  '));
+		var j = writer1.write(dyn, '  ');
+		trace(j);
+		var jj = new JsonParser<Array<ClassTest>>().fromJson(j);
 	}
 
 	#if !lua
