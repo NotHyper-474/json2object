@@ -45,6 +45,7 @@ class DataBuilder {
 	private static var parsers = new Map<String, Type>();
 	private static var callPosition:Null<Position> = null;
 	private static var jcustom = ":jcustomparse";
+	private static var jdynForce = ":jforceDynamic";
 
 	private static function notNull(type:Type):Type {
 		return switch (type) {
@@ -229,10 +230,8 @@ class DataBuilder {
 		parser.fields.push(loadJ);
 	}
 
-	public static function makeDynamicParser(parser:TypeDefinition) {
-		var e = macro {
-			return value = hxjsonast.Tools.getValue(json);
-		}
+	public static function makeDynamicParser(parser:TypeDefinition, type:Type) {
+		var e = macro return value = hxjsonast.Tools.getValue(json);
 
 		var args:Array<FunctionArg> = [
 			{
@@ -240,27 +239,25 @@ class DataBuilder {
 				type: macro:hxjsonast.Json
 			},
 			{
-				name:"variable",
+				name: "variable",
 				type: macro:String,
-				opt: true,
 				value: macro ""
 			}
 		];
 
 		var loadJ:Field = {
-			doc: null,
 			kind: FFun({
 				args: args,
 				expr: e,
 				params: null,
-				ret: macro :Dynamic
+				ret: TypeTools.toComplexType(type)
 			}),
 			access: [AOverride, APublic],
 			name: "loadJson",
 			pos: Context.currentPos(),
-			meta: null
 		}
 		parser.fields.push(loadJ);
+		return macro $i{loadJ.name};
 	}
 
 	private static function invalidParserErrorMessage(t:Type, e:Expr, m:String):String {
@@ -390,6 +387,9 @@ class DataBuilder {
 						} catch(e:CustomFunctionError){
 							Context.fatalError(invalidParserErrorMessage(field.type, reader, e.message), Context.currentPos());
 						}
+					}
+					else if (f_type.match(TDynamic(_)) && field.meta.has(jdynForce)) {
+						reader = makeDynamicParser(parser, type);
 					}
 
 					var assignation = if (needReflect) {
@@ -1102,10 +1102,7 @@ class DataBuilder {
 				return makeParser(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeParser(c, f());
-			case TDynamic(_):
-				makeDynamicParser(parser);
-				
-			default: Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
+			default:// Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
 		}
 
 		parser.fields = parser.fields.filter(function (field) {

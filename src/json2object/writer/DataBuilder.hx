@@ -39,6 +39,7 @@ class DataBuilder {
 	private static var counter = 0;
 	private static var writers = new Map<String, Type>();
 	private static var jcustom = ":jcustomwrite";
+	private static var jforceDyn = ":jforceDynamic";
 
 	private static function notNull (type:Type) : Type {
 		return switch (type) {
@@ -212,6 +213,9 @@ class DataBuilder {
 						} catch (e:CustomFunctionError) {
 							Context.fatalError(invalidWriterErrorMessage(field.type, writer, e.message), Context.currentPos());
 						}
+					}
+					else if (f_type.match(TDynamic(_)) && field.meta.has(jforceDyn)) {
+						writer = macro dynamicWriter();
 					}
 					if (writer != null) {
 						assignation = macro $assignation + $writer(cast $f_a);
@@ -579,8 +583,6 @@ class DataBuilder {
 				return makeWriter(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeWriter(c, f(), f());
-			case TDynamic(_):
-				macro return dynamicWriter(o, space, level, indentFirst, onAllOptionalNull);
 			default: Context.fatalError("json2object: Writer for "+type.toString()+" are not generated", Context.currentPos());
 		}
 

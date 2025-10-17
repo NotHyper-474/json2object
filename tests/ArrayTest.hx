@@ -66,6 +66,8 @@ class ClassTest
 
 
 	//@:jcustomwrite(tests.ArrayTest.writeDynamic)
+	//@:jcustomparse(tests.ArrayTest.writeDynamic)
+	@:jforceDynamic
 	@:optional
 	public var v:Dynamic;
 
@@ -108,7 +110,7 @@ class ArrayTest implements utest.ITest {
 		}
 		Assert.same(data, parser.fromJson(writer.write(data),"test"));
 
-		var dyn = [new ClassTest(0, null, [{ a: 10 }, 20, 20], [], EnumValue1("Some value"))];
+		var dyn = [new ClassTest(0, null, 10, [], EnumValue1("Some value"))];
 		var writer1 = new JsonWriter<Array<ClassTest>>(true);
 		var j = writer1.write(dyn, '  ');
 		trace(j);
