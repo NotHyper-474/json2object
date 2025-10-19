@@ -41,6 +41,93 @@ class DataBuilder {
 	private static var jcustom = ":jcustomwrite";
 	private static var jforceDyn = ":jforceDynamic";
 
+	private static var dynWriterExpr:Expr = macro
+	{
+		if (o == null) return indentFirst ? buildIndent(space, level) : '' + "null";
+
+		switch (Type.typeof(o))
+		{
+			case TUnknown: return indentFirst ? buildIndent(space, level) : '' + '"???"';
+			case TFunction: throw "Cannot write a function.";
+			case TInt | TFloat | TBool: ${makeBasicWriter(Context.getType("Null"))};
+			case TObject: return fieldsWrite(o, Reflect.fields(o), space, level);
+			case TClass(c):
+				if (c == String)
+					${makeStringWriter()};
+				else if (c == Array)
+				{
+					var v:Array<Dynamic> = o;
+					var buf = new StringBuf();
+					buf.addChar('['.code);
+					for (i in 0...v.length)
+					{
+						if (i > 0) buf.addChar(','.code);
+						else level++;
+						buf.addChar('\n'.code);
+						buf.add(buildIndent(space, level));
+						buf.add(dynamicWrite(v[i], space, level, indentFirst));
+						if (i == v.length - 1)
+						{
+							level--;
+							buf.addChar('\n'.code);
+							buf.add(buildIndent(space, level));
+						}
+					}
+					buf.addChar(']'.code);
+					return buf.toString();
+				}
+				else if (c == haxe.ds.StringMap)
+				{
+					var s:haxe.ds.StringMap<Dynamic> = o;
+					var o = {};
+					for (k => v in s)
+						Reflect.setField(o, k, v);
+					return fieldsWrite(o, Reflect.fields(o), space, level);
+				} 
+				else if (c == Date)
+				{
+					return quote((o:Date).toString());
+				}
+				else
+					return fieldsWrite(o, Type.getInstanceFields(o), space, level);			
+			case _: throw "Not implemented!";
+		}
+	}
+
+	private static var dynFieldsWriterExpr:Expr = macro
+	{
+		var buf:StringBuf = new StringBuf();
+		var empty:Bool = true;
+		buf.addChar('{'.code);
+		for (i in 0...fields.length)
+		{
+			var f = Reflect.field(o, fields[i]);
+			if (Reflect.isFunction(f)) continue;
+			if (empty)
+			{
+				level++;
+				empty = false;
+			}
+			else
+				buf.addChar(','.code);
+
+			buf.addChar('\n'.code);
+			buf.add(buildIndent(space, level));
+			buf.add(quote(fields[i]));
+			buf.add(': ');
+			buf.add(dynamicWrite(f, space, level, false));
+		}
+		if (!empty)
+		{
+			level--;
+			buf.addChar('\n'.code);
+			buf.add(buildIndent(space, level));
+		}
+		buf.addChar('}'.code);
+
+		return buf.toString();
+	}
+
 	private static function notNull (type:Type) : Type {
 		return switch (type) {
 			case TAbstract(_.get()=>t, p):
@@ -144,7 +231,7 @@ class DataBuilder {
 		};
 	}
 
-	private static function makeObjectOrAnonWriter (type:Type, baseParser:BaseType) : Expr {
+	private static function makeObjectOrAnonWriter (type:Type, baseParser:BaseType, writerClass:TypeDefinition) : Expr {
 		var fields:Array<ClassField>;
 
 		var tParams:Array<TypeParameter>;
@@ -215,7 +302,31 @@ class DataBuilder {
 						}
 					}
 					else if (f_type.match(TDynamic(_)) && field.meta.has(jforceDyn)) {
-						writer = macro dynamicWriter();
+						var args:Array<FunctionArg> = [for (i => a in ['o', 'space', 'level', 'indentFirst']) { name: a, type: i == 0 ? macro :Dynamic : null }];
+						var dynWrite:Field = {
+							name: 'dynamicWrite',
+							pos: writerClass.pos,
+							kind: FFun({
+								args: args,
+								expr: dynWriterExpr,
+								ret: macro :String
+								}),
+						};
+						writerClass.fields.push(dynWrite);
+
+						var args:Array<FunctionArg> = [for (a in ['o', 'fields', 'space', 'level']) { name: a }];
+						var fieldsWrite:Field = {
+							name: 'fieldsWrite',
+							pos: writerClass.pos,
+							kind: FFun({
+								args: args,
+								expr: dynFieldsWriterExpr,
+								ret: macro :String
+								}),
+						};
+						writerClass.fields.push(fieldsWrite);
+
+						writer = macro function(v) return dynamicWrite(v, space, level + 1, false);
 					}
 					if (writer != null) {
 						assignation = macro $assignation + $writer(cast $f_a);
@@ -430,91 +541,6 @@ class DataBuilder {
 				}
 				return buff.toString();
 			}
-
-			private function fieldsWrite(o:Dynamic, fields:Array<String>, space:String, level:Int):String {
-				var buf:StringBuf = new StringBuf();
-				var empty:Bool = true;
-				buf.addChar('{'.code);
-				for (i in 0...fields.length)
-				{
-					var f = Reflect.field(o, fields[i]);
-					if (Reflect.isFunction(f)) continue;
-					if (empty)
-					{
-						level++;
-						empty = false;
-					}
-					else buf.addChar(','.code);
-
-					buf.addChar('\n'.code);
-					buf.add(buildIndent(space, level));
-					buf.add(quote(fields[i]));
-					buf.add(': ');
-					buf.add(dynamicWriter(f, space, level, false, null));
-				}
-				if (!empty)
-				{
-					level--;
-					buf.addChar('\n'.code);
-					buf.add(buildIndent(space, level));
-				}
-				buf.addChar('}'.code);
-
-				return buf.toString();
-			}
-
-			private function dynamicWriter(o:Dynamic, space:String, level:Int, indentFirst:Bool = false, onAllOptionalNull:Void->String):String {
-				if (o == null) return indentFirst ? buildIndent(space, level) : '' + "null";
-
-				switch (Type.typeof(o))
-				{
-					case TUnknown: return indentFirst ? buildIndent(space, level) : '' + '"???"';
-					case TFunction: throw "Cannot write a function.";
-					case TInt | TFloat | TBool: ${makeBasicWriter(Context.getType("Null"))};
-					case TObject: return fieldsWrite(o, Reflect.fields(o), space, level);
-					case TClass(c):
-						if (c == String)
-							${makeStringWriter()};
-						else if (c == Array)
-						{
-							var v:Array<Dynamic> = o;
-							var buf = new StringBuf();
-							buf.addChar('['.code);
-							for (i in 0...v.length)
-							{
-								if (i > 0) buf.addChar(','.code);
-								else level++;
-								buf.addChar('\n'.code);
-								buf.add(buildIndent(space, level));
-								buf.add(dynamicWriter(v[i], space, level, indentFirst, onAllOptionalNull));
-								if (i == v.length - 1)
-								{
-									level--;
-									buf.addChar('\n'.code);
-									buf.add(buildIndent(space, level));
-								}
-							}
-							buf.addChar(']'.code);
-							return buf.toString();
-						}
-						else if (c == haxe.ds.StringMap)
-						{
-							var v:haxe.ds.StringMap<Dynamic> = o;
-							var o = {};
-							for (k in v.keys())
-								Reflect.setField(o, k, v.get(k));
-							return fieldsWrite(o, Reflect.fields(o), space, level);
-						} 
-						else if (c == Date)
-						{
-							return quote((o:Date).toString());
-						}
-						else
-							return fieldsWrite(o, Type.getInstanceFields(o), space, level);			
-					case _: throw "Not implemented!";
-				}
-				
-			}
 		};
 
 		var writeExpr = switch (type) {
@@ -540,11 +566,11 @@ class DataBuilder {
 						if (t.meta.has(jcustom)) {
 							makeCustomWriter(type, t);
 						} else {
-							makeObjectOrAnonWriter(type, c);
+							makeObjectOrAnonWriter(type, c, writerClass);
 						}
 				}
 			case TAnonymous(_.get()=>t):
-				makeObjectOrAnonWriter(type, c);
+				makeObjectOrAnonWriter(type, c, writerClass);
 			case TAbstract(_.get()=>t, p):
 				if (t.name == "Null") {
 					return makeWriter(c, p[0], type);

@@ -1102,7 +1102,7 @@ class DataBuilder {
 				return makeParser(c, t.type.applyTypeParameters(t.params, p), type);
 			case TLazy(f):
 				return makeParser(c, f());
-			default:// Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
+			default: Context.fatalError("json2object: Parser of "+type.toString()+" are not generated", callPosition);
 		}
 
 		parser.fields = parser.fields.filter(function (field) {
